@@ -80,7 +80,7 @@ if "chat_engine" not in st.session_state and documenti_caricati:
     
     try:
         st.session_state.chat_engine = st.session_state.client.chats.create(
-            model="gemini-1.5-pro-latest",
+            model="gemini-1.5-pro",
             config=types.GenerateContentConfig(
                 system_instruction=istruzioni_di_sistema,
                 temperature=0.0
