@@ -18,7 +18,7 @@ else:
     st.error("⚠️ Configurazione incompleta: Chiave API non trovata nella cassaforte (Secrets)!")
     st.stop()
 
-# --- LA MODIFICA RICHIESTA: SALVIAMO IL CLIENT IN MEMORIA PER EVITARE CHIUSURE IMPROVVISE ---
+# --- SALVIAMO IL CLIENT IN MEMORIA PER EVITARE L'ERRORE "CLIENT CLOSED" ---
 if "client" not in st.session_state:
     st.session_state.client = genai.Client(api_key=API_KEY)
 
@@ -71,7 +71,8 @@ with st.spinner("Inizializzazione della banca dati normativa in corso... Attende
     try:
         documenti_caricati = carica_documenti_nel_cloud()
     except Exception as e:
-        st.error("⚠️ Il server è momentaneamente sovraccarico per le troppe richieste. Si prega di attendere 15 minuti e ricaricare la pagina.")
+        # Maschera rimossa: stampiamo l'errore reale
+        st.error(f"⚠️ ERRORE TECNICO UPLOAD REALE: {e}")
         st.stop()
 
 # Inizializziamo il motore di chat
@@ -109,7 +110,8 @@ if "chat_engine" not in st.session_state and documenti_caricati:
         st.session_state.chat_engine.send_message(contesto_iniziale)
         
     except Exception as e:
-        st.error("⚠️ Limite di comunicazioni con il server raggiunto. Attendi qualche minuto prima di usare la chat.")
+        # Maschera rimossa: stampiamo l'errore reale
+        st.error(f"⚠️ ERRORE TECNICO MOTORE REALE: {e}")
 
 for messaggio in st.session_state.messages:
     with st.chat_message(messaggio["ruolo"]):
@@ -128,4 +130,5 @@ if domanda_utente := st.chat_input("Scrivi qui la tua domanda sull'Assegno Terzo
                 st.write(risposta.text)
                 st.session_state.messages.append({"ruolo": "assistant", "testo": risposta.text})
             except Exception as e:
-                st.error(f"⚠️ Errore temporaneo del server Google (Possibile limite richieste superato). Riprova tra poco.")
+                # MASCHERA RIMOSSA: Ecco l'operazione che svelerà il mistero!
+                st.error(f"⚠️ ERRORE TECNICO REALE: {e}")
