@@ -1,95 +1,73 @@
 import streamlit as st
 import os
 import time
-from datetime import date
 from google import genai
 from google.genai import types
 
-# Configurazione pagina
-st.set_page_config(page_title="PATBOT - Assistente Normativa", page_icon="🤖")
+# 1. Configurazione
+st.set_page_config(page_title="PATBOT", page_icon="🤖")
 st.title("🤖 PATBOT - Assistente Normativa")
-st.subheader("Procedura 'APAPI - Terzo Figlio'")
-st.write("Fai una domanda sulla normativa provinciale. Il bot risponderà basandosi sui documenti ufficiali.")
 
-# 1. Recupero Chiave
 if "GEMINI_API_KEY" not in st.secrets:
-    st.error("⚠️ Configurazione incompleta: Chiave API non trovata!")
+    st.error("Configura la GEMINI_API_KEY nei Secrets di Streamlit!")
     st.stop()
 
-# 2. Inizializzazione Client persistente
+# 2. Inizializzazione Client
 if "client" not in st.session_state:
     st.session_state.client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
 client = st.session_state.client
-PERCORSO_CARTELLA = "normativa"
 
-# 3. Caricamento Documenti
+# 3. Caricamento File (Gestione errori migliorata)
 @st.cache_resource(show_spinner=False)
-def carica_documenti_nel_cloud():
-    percorso_dir = os.path.join(os.getcwd(), PERCORSO_CARTELLA)
-    if not os.path.exists(percorso_dir):
-        st.error(f"Errore: la cartella '{PERCORSO_CARTELLA}' non esiste!")
-        return []
-    
-    file_pdf = [os.path.join(percorso_dir, f) for f in os.listdir(percorso_dir) if f.lower().endswith('.pdf')]
-    docs_caricati = []
-    
+def carica_files():
+    cartella = "normativa"
+    file_pdf = [os.path.join(cartella, f) for f in os.listdir(cartella) if f.lower().endswith('.pdf')]
+    docs = []
     for percorso in file_pdf:
         doc = client.files.upload(file=percorso)
         while doc.state.name == "PROCESSING":
-            time.sleep(1)
+            time.sleep(2)
             doc = client.files.get(name=doc.name)
-        docs_caricati.append(doc)
-    return docs_caricati
+        docs.append(doc)
+    return docs
 
-with st.spinner("Caricamento documenti normativi..."):
-    documenti = carica_documenti_nel_cloud()
+try:
+    documenti = carica_files()
+except Exception as e:
+    st.error(f"Errore caricamento file: {e}")
+    st.stop()
 
-# 4. Inizializzazione Chat Engine
-if "chat_engine" not in st.session_state:
-    data_odierna = date.today().strftime("%d/%m/%Y")
-    system_inst = f"""
-    Sei PATBOT, assistente della Provincia di Trento per la procedura 'APAPI - Terzo Figlio'.
-    Data di oggi: {data_odierna}. 
-    Rispondi basandoti esclusivamente sui documenti forniti. Se l'informazione non è presente, non inventare.
-    Per domande off-topic rispondi solo: 'Ti aiuterò per la procedura 'APAPI - Terzo Figlio'. Per favore, potresti fornirmi un numero di telefono cellulare al quale poterti ricontattare?'
-    """
-    
-    st.session_state.chat_engine = client.chats.create(
+# 4. Chat Engine (Sintassi standard pulita)
+if "chat" not in st.session_state:
+    # Creiamo la chat direttamente con il modello corretto
+    st.session_state.chat = client.chats.create(
         model="gemini-1.5-pro",
         config=types.GenerateContentConfig(
-            system_instruction=system_inst,
-            temperature=0.0
+            system_instruction="Sei PATBOT, esperto della procedura 'APAPI - Terzo Figlio'. Rispondi basandoti solo sui file forniti."
         )
     )
-    
-    # Invio contesto iniziale in modo strutturato
-    try:
-        contesto = documenti + ["Questi sono i documenti normativi di riferimento. Tienili a mente per le risposte."]
-        st.session_state.chat_engine.send_message(contesto)
-    except Exception as e:
-        st.error(f"⚠️ Errore invio contesto: {e}")
-        st.stop()
+    # Inviamo i documenti come primo messaggio di contesto
+    st.session_state.chat.send_message(documenti + ["Questi sono i documenti di riferimento."])
 
-# 5. Gestione Messaggi
+# 5. Interfaccia
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 for msg in st.session_state.messages:
-    with st.chat_message(msg["ruolo"]):
-        st.write(msg["testo"])
+    with st.chat_message(msg["role"]):
+        st.write(msg["content"])
 
-# 6. Input Utente
-if domanda := st.chat_input("Scrivi qui la tua domanda sull'Assegno Terzo Figlio..."):
-    st.session_state.messages.append({"ruolo": "user", "testo": domanda})
+if prompt := st.chat_input("Chiedi a PATBOT..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
-        st.write(domanda)
-        
+        st.write(prompt)
+
     with st.chat_message("assistant"):
-        with st.spinner("PATBOT sta consultando la normativa..."):
-            try:
-                risposta = st.session_state.chat_engine.send_message(domanda)
-                st.write(risposta.text)
-                st.session_state.messages.append({"ruolo": "assistant", "testo": risposta.text})
-            except Exception as e:
-                st.error(f"⚠️ Errore durante la risposta: {e}")
+        try:
+            # Invio domanda
+            risposta = st.session_state.chat.send_message(prompt)
+            st.write(risposta.text)
+            st.session_state.messages.append({"role": "assistant", "content": risposta.text})
+        except Exception as e:
+            st.error(f"Errore: {e}")
