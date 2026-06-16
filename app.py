@@ -16,12 +16,16 @@ else:
     st.error("⚠️ Chiave API non trovata nella cassaforte (Secrets)!")
     st.stop()
 
-client = genai.Client(api_key=API_KEY)
+# 1. LA CONNESSIONE A GOOGLE SALVATA IN MEMORIA (Questo risolve l'errore del client chiuso)
+if "client" not in st.session_state:
+    st.session_state.client = genai.Client(api_key=API_KEY)
+
 PERCORSO_CARTELLA = "normativa"
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# 2. UPLOAD DEI DOCUMENTI ISOLATO E PROTETTO
 @st.cache_resource(show_spinner=False)
 def carica_documenti_nel_cloud():
     if not os.path.exists(PERCORSO_CARTELLA):
@@ -31,13 +35,16 @@ def carica_documenti_nel_cloud():
     docs_caricati = []
     barra_progresso = st.progress(0, text="PATBOT sta studiando i documenti...")
     
+    # Creiamo un client apposito solo per caricare i file e lo isoliamo
+    client_upload = genai.Client(api_key=API_KEY)
+    
     for i, nome_file in enumerate(file_pdf_trovati):
         percorso_completo = os.path.join(PERCORSO_CARTELLA, nome_file)
-        doc_cloud = client.files.upload(file=percorso_completo)
+        doc_cloud = client_upload.files.upload(file=percorso_completo)
         
         while doc_cloud.state.name == "PROCESSING":
             time.sleep(1)
-            doc_cloud = client.files.get(name=doc_cloud.name)
+            doc_cloud = client_upload.files.get(name=doc_cloud.name)
             
         if doc_cloud.state.name != "FAILED":
             docs_caricati.append(doc_cloud)
@@ -55,6 +62,7 @@ with st.spinner("Inizializzazione della banca dati..."):
         st.error(f"⚠️ ERRORE CARICAMENTO FILE: {e}")
         st.stop()
 
+# 3. CREAZIONE DEL MOTORE CHAT AGGANCIATO ALLA CONNESSIONE IN MEMORIA
 if "chat_engine" not in st.session_state and documenti_caricati:
     data_odierna = date.today().strftime("%d/%m/%Y")
     
@@ -71,7 +79,7 @@ if "chat_engine" not in st.session_state and documenti_caricati:
     """
     
     try:
-        st.session_state.chat_engine = client.chats.create(
+        st.session_state.chat_engine = st.session_state.client.chats.create(
             model="gemini-1.5-pro",
             config=types.GenerateContentConfig(
                 system_instruction=istruzioni_di_sistema,
@@ -81,8 +89,7 @@ if "chat_engine" not in st.session_state and documenti_caricati:
         contesto_iniziale = list(documenti_caricati) + ["Questi sono i documenti della normativa. Tieniti pronto."]
         st.session_state.chat_engine.send_message(contesto_iniziale)
     except Exception as e:
-        # QUI VEDREMO IL VERO ERRORE TECNICO
-        st.error(f"⚠️ ERRORE TECNICO GOOGLE: {e}")
+        st.error(f"⚠️ ERRORE INIZIALIZZAZIONE GOOGLE: {e}")
 
 for messaggio in st.session_state.messages:
     with st.chat_message(messaggio["ruolo"]):
@@ -100,5 +107,4 @@ if domanda_utente := st.chat_input("Scrivi qui la tua domanda sull'Assegno Terzo
                 st.write(risposta.text)
                 st.session_state.messages.append({"ruolo": "assistant", "testo": risposta.text})
             except Exception as e:
-                # QUI VEDREMO IL VERO ERRORE TECNICO
                 st.error(f"⚠️ ERRORE TECNICO GOOGLE: {e}")
