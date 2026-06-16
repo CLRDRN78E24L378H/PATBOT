@@ -83,7 +83,7 @@ if "chat_engine" not in st.session_state and documenti_caricati:
     
     # Creiamo la sessione di chat con Google
     st.session_state.chat_engine = client.chats.create(
-        model="gemini-2.5-pro",
+        model="gemini-3.1-pro",
         config=types.GenerateContentConfig(system_instruction=istruzioni_di_sistema)
     )
     
