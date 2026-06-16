@@ -16,7 +16,7 @@ else:
     st.error("⚠️ Chiave API non trovata nella cassaforte (Secrets)!")
     st.stop()
 
-# 1. LA CONNESSIONE A GOOGLE SALVATA IN MEMORIA (Questo risolve l'errore del client chiuso)
+# 1. SALVATAGGIO CLIENT IN MEMORIA (Antidoto per l'errore "Client closed")
 if "client" not in st.session_state:
     st.session_state.client = genai.Client(api_key=API_KEY)
 
@@ -25,7 +25,6 @@ PERCORSO_CARTELLA = "normativa"
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 2. UPLOAD DEI DOCUMENTI ISOLATO E PROTETTO
 @st.cache_resource(show_spinner=False)
 def carica_documenti_nel_cloud():
     if not os.path.exists(PERCORSO_CARTELLA):
@@ -35,7 +34,7 @@ def carica_documenti_nel_cloud():
     docs_caricati = []
     barra_progresso = st.progress(0, text="PATBOT sta studiando i documenti...")
     
-    # Creiamo un client apposito solo per caricare i file e lo isoliamo
+    # Usiamo un client temporaneo solo per l'upload
     client_upload = genai.Client(api_key=API_KEY)
     
     for i, nome_file in enumerate(file_pdf_trovati):
@@ -62,7 +61,6 @@ with st.spinner("Inizializzazione della banca dati..."):
         st.error(f"⚠️ ERRORE CARICAMENTO FILE: {e}")
         st.stop()
 
-# 3. CREAZIONE DEL MOTORE CHAT AGGANCIATO ALLA CONNESSIONE IN MEMORIA
 if "chat_engine" not in st.session_state and documenti_caricati:
     data_odierna = date.today().strftime("%d/%m/%Y")
     
@@ -79,8 +77,9 @@ if "chat_engine" not in st.session_state and documenti_caricati:
     """
     
     try:
+        # 2. QUI AGGANCIAMO IL CLIENT IN MEMORIA E USIAMO IL MODELLO 002 (Antidoto per l'errore 404)
         st.session_state.chat_engine = st.session_state.client.chats.create(
-            model="gemini-1.5-pro",
+            model="gemini-1.5-pro-002",
             config=types.GenerateContentConfig(
                 system_instruction=istruzioni_di_sistema,
                 temperature=0.0
